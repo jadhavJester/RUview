@@ -1,0 +1,2129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>RuView Room Presence Tracker</title>
+  <!-- Google Fonts Outfit & Space Grotesk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      /* Theme color variables */
+      --bg-dark: #070913;
+      --bg-gradient: radial-gradient(circle at 50% 0%, #151833 0%, #070913 100%);
+      --card-bg: rgba(13, 17, 33, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-glow: rgba(0, 242, 254, 0.15);
+      
+      --color-occupied: #00f2fe; /* Glowing cyan */
+      --color-occupied-rgb: 0, 242, 254;
+      --color-still: #ffb800; /* Amber warning */
+      --color-still-rgb: 255, 184, 0;
+      --color-vacant: #3a4566; /* Muted slate */
+      --color-vacant-rgb: 58, 69, 102;
+      
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-danger: #ef4444;
+      --color-text: #e2e8f0;
+      --color-text-muted: #8a99ad;
+      
+      --font-heading: 'Space Grotesk', sans-serif;
+      --font-body: 'Outfit', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg-dark);
+      background-image: var(--bg-gradient);
+      color: var(--color-text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-bottom: 2rem;
+    }
+
+    /* Core container */
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Glassmorphism card utility */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 1.25rem;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* Header styling */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand h1 {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .brand span {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    /* Connection status badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.875rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(17, 24, 39, 0.6);
+      cursor: pointer;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-danger);
+      box-shadow: 0 0 10px var(--color-danger);
+    }
+
+    .status-dot.connected {
+      background: var(--color-success);
+      box-shadow: 0 0 10px var(--color-success);
+      animation: pulse-green 2s infinite;
+    }
+
+    .status-dot.connecting, .status-dot.reconnecting {
+      background: var(--color-warning);
+      box-shadow: 0 0 10px var(--color-warning);
+      animation: pulse-yellow 1.5s infinite;
+    }
+
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--color-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Settings Panel */
+    .settings-panel {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      background: rgba(10, 12, 28, 0.95);
+      border-bottom: 2px solid var(--card-border-glow);
+    }
+
+    .settings-panel.open {
+      display: flex;
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-group label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
+    }
+
+    .form-group input[type="text"] {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      color: var(--color-text);
+      font-family: monospace;
+      font-size: 0.875rem;
+    }
+
+    .form-group input[type="text"]:focus {
+      outline: none;
+      border-color: var(--color-occupied);
+    }
+
+    /* Radio Selector Styling */
+    .source-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+
+    .source-option {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .source-option:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .source-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--color-occupied);
+      cursor: pointer;
+    }
+
+    .source-option-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+    }
+
+    .source-option-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .source-option-desc {
+      font-size: 0.725rem;
+      color: var(--color-text-muted);
+    }
+
+    .settings-actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      padding: 0.625rem 1.25rem;
+      border-radius: 10px;
+      border: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: var(--color-occupied);
+      color: #000;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--color-text);
+      border: 1px solid var(--card-border);
+    }
+
+    /* Occupancy Banner Card */
+    .occupancy-card {
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+      padding: 1.75rem 1.25rem;
+    }
+
+    .occupancy-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: rgba(var(--color-vacant-rgb), 0.25);
+      filter: blur(40px);
+      z-index: 0;
+      transition: all 0.6s ease;
+    }
+
+    .occupancy-card.occupied .occupancy-glow {
+      background: rgba(var(--color-occupied-rgb), 0.35);
+      filter: blur(50px);
+      width: 180px;
+      height: 180px;
+    }
+
+    .occupancy-card.still .occupancy-glow {
+      background: rgba(var(--color-still-rgb), 0.3);
+      filter: blur(50px);
+      width: 180px;
+      height: 180px;
+    }
+
+    .occupancy-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .occupancy-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .occupancy-status {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 0.5rem;
+      transition: color 0.3s ease;
+      color: var(--color-text-muted);
+    }
+
+    .occupancy-card.occupied .occupancy-status {
+      color: var(--color-occupied);
+      text-shadow: 0 0 20px rgba(var(--color-occupied-rgb), 0.5);
+    }
+
+    .occupancy-card.still .occupancy-status {
+      color: var(--color-still);
+      text-shadow: 0 0 20px rgba(var(--color-still-rgb), 0.5);
+    }
+
+    .occupancy-meta {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    /* Radar/Positioning display */
+    .radar-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .radar-container {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: rgba(8, 10, 24, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Radar sweep animation */
+    .radar-sweep {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: conic-gradient(from 0deg at 50% 50%, rgba(0, 242, 254, 0.15) 0deg, rgba(0, 242, 254, 0) 90deg, rgba(0, 242, 254, 0) 360deg);
+      border-radius: 50%;
+      z-index: 1;
+      transform-origin: center;
+      animation: radar-spin 4s linear infinite;
+      pointer-events: none;
+    }
+
+    .radar-container.offline .radar-sweep {
+      animation-play-state: paused;
+      opacity: 0.1;
+    }
+
+    /* Radar concentric rings */
+    .radar-ring {
+      position: absolute;
+      border: 1px dashed rgba(255, 255, 255, 0.06);
+      border-radius: 50%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .radar-ring-1 { width: 33.3%; height: 33.3%; }
+    .radar-ring-2 { width: 66.6%; height: 66.6%; }
+    .radar-ring-3 { width: 100%; height: 100%; border-style: solid; border-color: rgba(255, 255, 255, 0.08); }
+
+    .ring-label {
+      font-size: 0.65rem;
+      color: rgba(255, 255, 255, 0.2);
+      font-weight: 600;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Radar crosshairs */
+    .radar-axis-h {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.03);
+      pointer-events: none;
+    }
+    .radar-axis-v {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.03);
+      pointer-events: none;
+    }
+
+    /* Sensor node (Center) */
+    .sensor-node {
+      position: absolute;
+      z-index: 3;
+      width: 32px;
+      height: 32px;
+      background: #111530;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .sensor-node svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.8;
+    }
+
+    /* Human presence indicator in radar */
+    .presence-dot {
+      position: absolute;
+      z-index: 4;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--color-occupied);
+      border: 3px solid #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px var(--color-occupied);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      opacity: 0;
+      transform: scale(0.5) translate(-50%, -50%);
+      transform-origin: 0 0;
+    }
+
+    .presence-dot.visible {
+      opacity: 1;
+      transform: scale(1) translate(-50%, -50%);
+    }
+
+    .presence-dot.still {
+      background: var(--color-still);
+      box-shadow: 0 0 20px var(--color-still);
+    }
+
+    /* Pulsating aura around presence dot */
+    .presence-dot::after {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      right: -6px;
+      bottom: -6px;
+      border-radius: 50%;
+      border: 2px solid rgba(var(--color-occupied-rgb), 0.4);
+      animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+
+    .presence-dot.still::after {
+      border-color: rgba(var(--color-still-rgb), 0.4);
+    }
+
+    .presence-dot.vibrate::after {
+      animation-duration: 0.8s;
+    }
+
+    .presence-dot svg {
+      width: 10px;
+      height: 10px;
+      fill: #000;
+    }
+
+    .radar-disclaimer {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      text-align: center;
+      max-width: 240px;
+      line-height: 1.35;
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .card.metric-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .metric-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .metric-header svg {
+      width: 16px;
+      height: 16px;
+      color: var(--color-text-muted);
+    }
+
+    .metric-value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+
+    /* Animated heartbeat icon */
+    .beat-animation {
+      animation: pulse-scale 0.8s ease infinite alternate;
+      transform-origin: center;
+    }
+
+    /* Vitals sub-panel */
+    .vitals-sub-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 0.75rem;
+    }
+
+    .vital-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.875rem;
+    }
+
+    .vital-label {
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .vital-label svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .vital-val {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    /* Event Log timeline */
+    .log-card {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-height: 300px;
+    }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.75rem;
+    }
+
+    .log-header h2 {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      overflow-y: auto;
+      max-height: 200px;
+      padding-right: 2px;
+    }
+
+    /* Custom scrollbar for log list */
+    .log-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .log-list::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 2px;
+    }
+    .log-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+    }
+
+    .log-item {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      font-size: 0.875rem;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    .log-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .log-icon.entered {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--color-success);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .log-icon.left {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--color-danger);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .log-icon svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .log-content {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+
+    .log-title {
+      font-weight: 500;
+      color: #fff;
+    }
+
+    .log-time {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      margin-top: 0.125rem;
+    }
+
+    .log-empty {
+      color: var(--color-text-muted);
+      text-align: center;
+      padding: 2rem 0;
+      font-size: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .log-empty svg {
+      width: 32px;
+      height: 32px;
+      opacity: 0.3;
+    }
+
+    /* Keyframe Animations */
+    @keyframes pulse-green {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    @keyframes pulse-yellow {
+      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+      70% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { opacity: 0.5; }
+      100% { transform: scale(1.8); opacity: 0; }
+    }
+
+    @keyframes pulse-scale {
+      0% { transform: scale(0.9); }
+      100% { transform: scale(1.1); }
+    }
+
+    @keyframes radar-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* View tabs navigation styling */
+    .view-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 0.25rem;
+      background: rgba(13, 17, 33, 0.5);
+      border: 1px solid var(--card-border);
+      padding: 4px;
+      border-radius: 14px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 9px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      font-family: var(--font-heading);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .tab-btn svg {
+      transition: transform 0.25s ease;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .tab-btn:hover svg {
+      transform: scale(1.1);
+    }
+
+    .tab-btn.active {
+      background: rgba(0, 242, 254, 0.15);
+      border: 1px solid rgba(0, 242, 254, 0.25);
+      color: #00f2fe;
+      font-weight: 600;
+      box-shadow: 0 0 12px rgba(0, 242, 254, 0.1);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <h1>RuView</h1>
+        <span>Room Presence Tracker</span>
+      </div>
+      <div class="header-actions">
+        <div class="status-badge" id="statusBadge">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Connecting</span>
+        </div>
+        <button class="icon-btn" id="settingsToggle" aria-label="Settings">
+          <!-- Settings Icon SVG -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- View Tabs -->
+    <div class="view-tabs">
+      <button class="tab-btn active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        2D Radar
+      </button>
+      <button class="tab-btn" onclick="window.location.href='viz.html' + window.location.search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        3D Room
+      </button>
+    </div>
+
+    <!-- Settings Drawer (Hidden by default) -->
+    <div class="card settings-panel" id="settingsPanel">
+      <div class="form-group" id="wsUrlFormGroup">
+        <label for="wsUrlInput">WebSocket URL</label>
+        <input type="text" id="wsUrlInput" placeholder="ws://localhost:8080/ws/sensing">
+      </div>
+      
+      <div class="form-group" style="margin-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 0.75rem;">
+        <label style="font-weight: 600; color: #fff; font-size: 0.875rem; margin-bottom: 0.5rem;">Sensing Input Source</label>
+        <div class="source-selector">
+          <label class="source-option">
+            <input type="radio" name="inputSource" value="websocket" checked>
+            <span class="source-option-text">
+              <span class="source-option-title">Real-time WebSocket</span>
+              <span class="source-option-desc">Connects to ESP32 / RuView sensing server</span>
+            </span>
+          </label>
+          
+          <label class="source-option">
+            <input type="radio" name="inputSource" value="simulator">
+            <span class="source-option-text">
+              <span class="source-option-title">Interactive Radar Sandbox</span>
+              <span class="source-option-desc">Drag the radar dot to simulate presence & distance</span>
+            </span>
+          </label>
+          
+          <label class="source-option">
+            <input type="radio" name="inputSource" value="webcam">
+            <span class="source-option-text">
+              <span class="source-option-title">Webcam Motion CV Tracker</span>
+              <span class="source-option-desc">Uses local camera motion tracking (highly accurate)</span>
+            </span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="settings-actions">
+        <button class="btn btn-secondary" id="settingsCancel">Cancel</button>
+        <button class="btn btn-primary" id="settingsSave">Apply Settings</button>
+      </div>
+    </div>
+
+    <!-- Occupancy Banner -->
+    <div class="card occupancy-card" id="occupancyCard">
+      <div class="occupancy-glow"></div>
+      <div class="occupancy-content">
+        <div class="occupancy-label">Room Status</div>
+        <div class="occupancy-status" id="occupancyStatus">Empty</div>
+        <div class="occupancy-meta" id="occupancyMeta">Sensing idle</div>
+      </div>
+    </div>
+
+    <!-- Coarse Location / Radar -->
+    <div class="card radar-card">
+      <div class="radar-container offline" id="radarContainer">
+        <!-- Spinning sweep segment -->
+        <div class="radar-sweep"></div>
+        
+        <!-- Concentric distance rings -->
+        <div class="radar-ring radar-ring-1">
+          <span class="ring-label">Near</span>
+        </div>
+        <div class="radar-ring radar-ring-2">
+          <span class="ring-label">Mid</span>
+        </div>
+        <div class="radar-ring radar-ring-3">
+          <span class="ring-label">Far</span>
+        </div>
+        
+        <!-- Crosshairs -->
+        <div class="radar-axis-h"></div>
+        <div class="radar-axis-v"></div>
+        
+        <!-- Center sensor node -->
+        <div class="sensor-node">
+          <!-- ESP32 Sensor Icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="20" rx="4" ry="4"></rect>
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+          </svg>
+        </div>
+        
+        <!-- Target Presence Dot (moves dynamically) -->
+        <div class="presence-dot" id="presenceDot">
+          <!-- Person icon -->
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="radar-disclaimer">
+        Location estimates are approximations based on RSSI strength from a single node
+      </div>
+      <button class="btn btn-secondary" id="vacateRoomBtn" style="display: none; margin-top: 0.5rem; font-size: 0.75rem; padding: 0.5rem 1rem; border-radius: 8px; border-color: rgba(239, 68, 68, 0.3); color: #ef4444; background: rgba(239, 68, 68, 0.05);">
+        Vacate Room (Reset)
+      </button>
+    </div>
+
+    <!-- Info Metrics Grid -->
+    <div class="metrics-grid">
+      
+      <!-- Signal / Distance Card -->
+      <div class="card metric-card">
+        <div class="metric-header">
+          <!-- Antenna Icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14"></path>
+            <path d="M12 5v14"></path>
+            <path d="M19 12a7 7 0 0 0-14 0"></path>
+            <path d="M16 12a4 4 0 0 0-8 0"></path>
+          </svg>
+          <span>Signal Strength</span>
+        </div>
+        <div class="metric-value" id="signalValue">--</div>
+        <div class="metric-sub" id="distanceLabel">No sensor feed</div>
+      </div>
+
+      <!-- Activity / Motion Card -->
+      <div class="card metric-card">
+        <div class="metric-header">
+          <!-- Activity Line Icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Activity</span>
+        </div>
+        <div class="metric-value" id="motionValue">--</div>
+        <div class="metric-sub" id="motionState">Waiting for data</div>
+      </div>
+
+    </div>
+
+    <!-- Vital Signs Sub-Card (rendered only if available) -->
+    <div class="card" id="vitalsCard" style="display: none;">
+      <div class="metric-header" style="margin-bottom: 0.5rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+        </svg>
+        <span>Edge Bio-Signs</span>
+      </div>
+      <div class="vitals-sub-grid">
+        <div class="vital-row">
+          <div class="vital-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" id="heartIcon" style="width: 14px; height: 14px;">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+            </svg>
+            Heart Rate
+          </div>
+          <div class="vital-val" id="heartRateVal">-- bpm</div>
+        </div>
+        <div class="vital-row">
+          <div class="vital-label">
+            <!-- Wind/Breathing Icon -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="#00f2fe" stroke-width="2" style="width: 14px; height: 14px;">
+              <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
+            </svg>
+            Respiration
+          </div>
+          <div class="vital-val" id="respRateVal">-- breaths/m</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event History Log -->
+    <div class="card log-card">
+      <div class="log-header">
+        <h2>Sensing Log</h2>
+        <button class="icon-btn" id="clearLogBtn" title="Clear log" style="width: 28px; height: 28px; border-radius: 8px;">
+          <!-- Trash Can SVG -->
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="log-list" id="logList">
+        <!-- Log items dynamically added here -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Webcam floating preview card -->
+  <div class="card webcam-preview" id="webcamPreview" style="display: none; position: fixed; bottom: 20px; right: 20px; width: 140px; height: 105px; padding: 4px; border-radius: 12px; z-index: 1000; box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden; background: rgba(10,12,28,0.9); border: 1px solid var(--card-border-glow); transition: height 0.3s ease;">
+    <video id="webcamVideo" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px; transform: scaleX(-1); transition: opacity 0.3s ease;"></video>
+    <canvas id="webcamCanvas" style="display: none;"></canvas>
+    <div style="position: absolute; top: 8px; left: 8px; font-size: 0.6rem; color: #fff; background: rgba(0,0,0,0.6); padding: 2px 4px; border-radius: 4px; font-family: monospace;" id="webcamStats">0.0%</div>
+    <button id="toggleWebcamPreviewBtn" style="position: absolute; top: 8px; right: 8px; width: 16px; height: 16px; border-radius: 4px; border: none; background: rgba(0,0,0,0.6); color: #fff; font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;">_</button>
+  </div>
+
+  <script>
+    // State Variables
+    let ws = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 20;
+    const reconnectDelays = [1000, 2000, 4000, 8000, 16000];
+    let isCurrentlyPresent = false;
+    let presenceHistory = [];
+    let config = {
+      wsUrl: '',
+      inputSource: 'websocket'
+    };
+    
+    // Sandbox / Simulator drag states
+    let isDragging = false;
+    let dragLastTime = 0;
+    let dragLastPos = null;
+    let decayInterval = null;
+    let simPresence = false;
+    
+    // Webcam states
+    let webcamStream = null;
+    let webcamInterval = null;
+    let prevFrameData = null;
+    let lastMotionTime = 0;
+    let isWebcamPreviewCollapsed = false;
+
+    // DOM Elements
+    const statusBadge = document.getElementById('statusBadge');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const settingsToggle = document.getElementById('settingsToggle');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const wsUrlInput = document.getElementById('wsUrlInput');
+    const wsUrlFormGroup = document.getElementById('wsUrlFormGroup');
+    const settingsSave = document.getElementById('settingsSave');
+    const settingsCancel = document.getElementById('settingsCancel');
+    
+    const occupancyCard = document.getElementById('occupancyCard');
+    const occupancyStatus = document.getElementById('occupancyStatus');
+    const occupancyMeta = document.getElementById('occupancyMeta');
+    
+    const radarContainer = document.getElementById('radarContainer');
+    const presenceDot = document.getElementById('presenceDot');
+    const vacateRoomBtn = document.getElementById('vacateRoomBtn');
+    
+    const signalValue = document.getElementById('signalValue');
+    const distanceLabel = document.getElementById('distanceLabel');
+    const motionValue = document.getElementById('motionValue');
+    const motionState = document.getElementById('motionState');
+    
+    const vitalsCard = document.getElementById('vitalsCard');
+    const heartRateVal = document.getElementById('heartRateVal');
+    const respRateVal = document.getElementById('respRateVal');
+    const heartIcon = document.getElementById('heartIcon');
+    
+    const logList = document.getElementById('logList');
+    const clearLogBtn = document.getElementById('clearLogBtn');
+    
+    const webcamPreview = document.getElementById('webcamPreview');
+    const webcamVideo = document.getElementById('webcamVideo');
+    const webcamCanvas = document.getElementById('webcamCanvas');
+    const webcamStats = document.getElementById('webcamStats');
+    const toggleWebcamPreviewBtn = document.getElementById('toggleWebcamPreviewBtn');
+
+    // Auto-detect server address based on page location
+    function getAutoWsUrl() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:3000';
+      return `${protocol}//${host}/ws/sensing`;
+    }
+
+    // Initialize Page
+    function init() {
+      // Load saved settings or fallback to defaults
+      const savedWsUrl = localStorage.getItem('ruview_ws_url');
+      config.wsUrl = savedWsUrl || getAutoWsUrl();
+      wsUrlInput.value = config.wsUrl;
+
+      const savedSource = localStorage.getItem('ruview_input_source') || 'websocket';
+      config.inputSource = savedSource;
+      
+      // Update radio button selection
+      const radio = document.querySelector(`input[name="inputSource"][value="${savedSource}"]`);
+      if (radio) {
+        radio.checked = true;
+        updateWsFormVisibility(savedSource);
+      }
+
+      // Load event log from localStorage
+      loadEventLog();
+
+      // Set up UI Event Handlers
+      settingsToggle.addEventListener('click', toggleSettings);
+      settingsCancel.addEventListener('click', () => {
+        settingsPanel.classList.remove('open');
+      });
+      settingsSave.addEventListener('click', saveSettings);
+      clearLogBtn.addEventListener('click', clearEventLog);
+      
+      // Handle radio changes inside settings to toggle URL field
+      document.querySelectorAll('input[name="inputSource"]').forEach(elem => {
+        elem.addEventListener('change', (e) => {
+          updateWsFormVisibility(e.target.value);
+        });
+      });
+
+      // Tap status badge to force reconnect (only in WebSocket mode)
+      statusBadge.addEventListener('click', () => {
+        if (config.inputSource !== 'websocket') return;
+        if (!ws || ws.readyState === WebSocket.CLOSED) {
+          reconnectAttempts = 0;
+          connect();
+        }
+      });
+      
+      // Setup dragging mechanisms
+      setupRadarDragHandlers();
+      
+      // Setup webcam preview minimize button
+      toggleWebcamPreviewBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isWebcamPreviewCollapsed = !isWebcamPreviewCollapsed;
+        if (isWebcamPreviewCollapsed) {
+          webcamPreview.style.height = '32px';
+          webcamVideo.style.opacity = '0';
+          toggleWebcamPreviewBtn.textContent = '+';
+        } else {
+          webcamPreview.style.height = '105px';
+          webcamVideo.style.opacity = '1';
+          toggleWebcamPreviewBtn.textContent = '_';
+        }
+      });
+
+      // Apply initial input source
+      applyInputSource();
+    }
+
+    function updateWsFormVisibility(source) {
+      if (source === 'websocket') {
+        wsUrlFormGroup.style.display = 'flex';
+      } else {
+        wsUrlFormGroup.style.display = 'none';
+      }
+    }
+
+    // Toggle Settings drawer
+    function toggleSettings() {
+      settingsPanel.classList.toggle('open');
+    }
+
+    // Save Settings
+    function saveSettings() {
+      const newUrl = wsUrlInput.value.trim();
+      const selectedRadio = document.querySelector('input[name="inputSource"]:checked');
+      const newSource = selectedRadio ? selectedRadio.value : 'websocket';
+      
+      if (newUrl) {
+        config.wsUrl = newUrl;
+        localStorage.setItem('ruview_ws_url', newUrl);
+      }
+      
+      config.inputSource = newSource;
+      localStorage.setItem('ruview_input_source', newSource);
+      settingsPanel.classList.remove('open');
+      
+      applyInputSource();
+    }
+
+    // Activate selected source, cleaning up prior states
+    function applyInputSource() {
+      // Disconnect socket and simulators
+      stopWebcam();
+      stopSimulator();
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+        ws = null;
+      }
+      
+      // Reset presence states
+      isCurrentlyPresent = false;
+      occupancyCard.className = 'card occupancy-card';
+      occupancyStatus.textContent = 'Empty';
+      occupancyMeta.textContent = 'Sensing idle';
+      if (presenceDot) {
+        presenceDot.style.display = 'flex';
+        presenceDot.classList.remove('visible');
+      }
+      if (typeof updateRadarDots === 'function') {
+        updateRadarDots(0, 0, 0);
+      }
+      
+      if (config.inputSource === 'websocket') {
+        connect();
+      } else if (config.inputSource === 'simulator') {
+        startSimulator();
+      } else if (config.inputSource === 'webcam') {
+        startWebcam();
+      }
+    }
+
+    // Set connection UI state
+    function setConnectionState(state) {
+      statusDot.className = 'status-dot';
+      statusText.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+      
+      switch(state) {
+        case 'connected':
+          statusDot.classList.add('connected');
+          radarContainer.classList.remove('offline');
+          break;
+        case 'simulated':
+          statusDot.classList.add('connected');
+          statusDot.style.background = 'var(--color-occupied)';
+          statusDot.style.boxShadow = '0 0 10px var(--color-occupied)';
+          radarContainer.classList.remove('offline');
+          break;
+        case 'connecting':
+        case 'reconnecting':
+          statusDot.classList.add('connecting');
+          radarContainer.classList.add('offline');
+          break;
+        case 'disconnected':
+        default:
+          radarContainer.classList.add('offline');
+          break;
+      }
+    }
+
+    // Establish WebSocket Connection
+    function connect() {
+      setConnectionState(reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+      console.log('Connecting to sensing WebSocket:', config.wsUrl);
+
+      try {
+        ws = new WebSocket(config.wsUrl);
+      } catch (err) {
+        console.error('WebSocket creation error:', err);
+        handleDisconnect();
+        return;
+      }
+
+      ws.onopen = () => {
+        console.log('Sensing stream connected');
+        reconnectAttempts = 0;
+        setConnectionState('connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          handleSensingFrame(payload);
+        } catch (err) {
+          console.warn('Failed to parse frame message:', err);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket connection error:', err);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+        handleDisconnect();
+      };
+    }
+
+    // Handle connection drops and retries
+    function handleDisconnect() {
+      if (config.inputSource !== 'websocket') return; 
+      
+      setConnectionState('disconnected');
+      
+      // Mute UI data on disconnect
+      occupancyMeta.textContent = 'Sensing offline';
+      signalValue.textContent = '--';
+      distanceLabel.textContent = 'No signal';
+      motionValue.textContent = '--';
+      motionState.textContent = 'Offline';
+      if (presenceDot) presenceDot.classList.remove('visible');
+      if (typeof updateRadarDots === 'function') {
+        updateRadarDots(0, 0, 0);
+      }
+
+      // Attempt reconnection with exponential backoff
+      if (reconnectAttempts < maxReconnectAttempts) {
+        const delay = reconnectDelays[Math.min(reconnectAttempts, reconnectDelays.length - 1)];
+        reconnectAttempts++;
+        console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+        setTimeout(connect, delay);
+      } else {
+        console.error('Max reconnection attempts reached. Click status badge to retry.');
+        statusText.textContent = 'Offline (Tap to Retry)';
+      }
+    }
+
+    /* --- SOURCE 2: Draggable Radar Sandbox Simulator --- */
+    function startSimulator() {
+      setConnectionState('simulated');
+      statusText.textContent = 'Radar Sandbox';
+      vacateRoomBtn.style.display = 'inline-block';
+      
+      // Reset radar position to center
+      presenceDot.style.left = '50%';
+      presenceDot.style.top = '50%';
+      presenceDot.classList.remove('visible');
+      simPresence = false;
+    }
+
+    function stopSimulator() {
+      vacateRoomBtn.style.display = 'none';
+      if (decayInterval) {
+        clearInterval(decayInterval);
+        decayInterval = null;
+      }
+    }
+
+    function setupRadarDragHandlers() {
+      // Set grab cursors
+      presenceDot.style.cursor = 'grab';
+      
+      presenceDot.addEventListener('mousedown', (e) => {
+        if (config.inputSource !== 'simulator') return;
+        e.preventDefault();
+        startDrag(e.clientX, e.clientY);
+      });
+      
+      presenceDot.addEventListener('touchstart', (e) => {
+        if (config.inputSource !== 'simulator') return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        startDrag(touch.clientX, touch.clientY);
+      });
+      
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        moveDrag(e.clientX, e.clientY);
+      });
+      
+      window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        moveDrag(touch.clientX, touch.clientY);
+      });
+      
+      window.addEventListener('mouseup', () => {
+        if (isDragging) endDrag();
+      });
+      
+      window.addEventListener('touchend', () => {
+        if (isDragging) endDrag();
+      });
+
+      // Click to place dot on radar
+      radarContainer.addEventListener('click', (e) => {
+        if (config.inputSource !== 'simulator' || isDragging) return;
+        // Avoid snapping if clicking directly on the dot
+        if (e.target === presenceDot || presenceDot.contains(e.target)) return;
+        
+        isDragging = true;
+        simPresence = true;
+        moveDrag(e.clientX, e.clientY);
+        isDragging = false;
+        endDrag();
+      });
+
+      // Vacate button action
+      vacateRoomBtn.addEventListener('click', () => {
+        simPresence = false;
+        if (decayInterval) clearInterval(decayInterval);
+        
+        const frame = {
+          type: 'sensing_update',
+          timestamp: Date.now() / 1000,
+          source: 'radar_sandbox',
+          classification: {
+            presence: false,
+            motion_level: 'absent',
+            confidence: 0.99
+          },
+          features: {
+            mean_rssi: null,
+            motion_band_power: 0,
+            variance: 0
+          },
+          vital_signs: null
+        };
+        handleSensingFrame(frame);
+      });
+    }
+
+    function startDrag(clientX, clientY) {
+      isDragging = true;
+      presenceDot.style.cursor = 'grabbing';
+      dragLastTime = Date.now();
+      dragLastPos = { x: clientX, y: clientY };
+      simPresence = true;
+      
+      if (decayInterval) clearInterval(decayInterval);
+    }
+
+    function moveDrag(clientX, clientY) {
+      const rect = radarContainer.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      
+      let dx = clientX - cx;
+      let dy = clientY - cy;
+      
+      let distance = Math.sqrt(dx * dx + dy * dy);
+      const maxRadius = (rect.width / 2) * 0.9;
+      
+      if (distance > maxRadius) {
+        dx = (dx / distance) * maxRadius;
+        dy = (dy / distance) * maxRadius;
+        distance = maxRadius;
+      }
+      
+      // Calculate dot offsets inside relative container
+      const x = rect.width / 2 + dx;
+      const y = rect.height / 2 + dy;
+      
+      presenceDot.style.left = `${x}px`;
+      presenceDot.style.top = `${y}px`;
+      presenceDot.classList.add('visible');
+      
+      // Calculate drag speed to simulate motion energy
+      const now = Date.now();
+      const dt = (now - dragLastTime) / 1000;
+      let speed = 0;
+      if (dt > 0 && dragLastPos) {
+        const moveDist = Math.sqrt(Math.pow(clientX - dragLastPos.x, 2) + Math.pow(clientY - dragLastPos.y, 2));
+        speed = moveDist / dt / 500; // Normalizing divisor
+      }
+      
+      dragLastTime = now;
+      dragLastPos = { x: clientX, y: clientY };
+      
+      // Convert radius percent to RSSI
+      const pct = distance / maxRadius;
+      const rssi = -32 - pct * 53; // scale from -32dBm (center) to -85dBm (far)
+      
+      const motionEnergy = Math.max(0.005, Math.min(1.0, speed));
+      
+      const frame = {
+        type: 'sensing_update',
+        timestamp: now / 1000,
+        source: 'radar_sandbox',
+        classification: {
+          presence: true,
+          motion_level: motionEnergy > 0.04 ? 'present_moving' : 'present_still',
+          confidence: 0.99
+        },
+        features: {
+          mean_rssi: rssi,
+          motion_band_power: motionEnergy,
+          variance: motionEnergy
+        },
+        vital_signs: {
+          heart_rate_bpm: 72 + Math.sin(now / 4000) * 4,
+          breathing_rate_bpm: 14.5 + Math.sin(now / 8000) * 1.5
+        }
+      };
+      handleSensingFrame(frame);
+    }
+
+    function endDrag() {
+      isDragging = false;
+      presenceDot.style.cursor = 'grab';
+      
+      // Decay movement energy
+      if (decayInterval) clearInterval(decayInterval);
+      
+      decayInterval = setInterval(() => {
+        const now = Date.now();
+        const currentRssi = parseFloat(signalValue.textContent) || -55;
+        const currentMotion = parseFloat(motionValue.textContent) || 0;
+        
+        const decayedMotion = Math.max(0.001, currentMotion * 0.5);
+        const motionLvl = decayedMotion > 0.015 ? 'present_moving' : 'present_still';
+        
+        const frame = {
+          type: 'sensing_update',
+          timestamp: now / 1000,
+          source: 'radar_sandbox',
+          classification: {
+            presence: simPresence,
+            motion_level: simPresence ? motionLvl : 'absent',
+            confidence: 0.99
+          },
+          features: {
+            mean_rssi: simPresence ? currentRssi : null,
+            motion_band_power: decayedMotion,
+            variance: decayedMotion
+          },
+          vital_signs: simPresence ? {
+            heart_rate_bpm: 71 + Math.sin(now / 5000) * 3,
+            breathing_rate_bpm: 14 + Math.sin(now / 10000) * 1
+          } : null
+        };
+        handleSensingFrame(frame);
+        
+        if (decayedMotion <= 0.002) {
+          clearInterval(decayInterval);
+          decayInterval = null;
+        }
+      }, 250);
+    }
+
+
+    /* --- SOURCE 3: Webcam Motion CV Tracker (Local Camera) --- */
+    async function startWebcam() {
+      stopWebcam();
+      setConnectionState('connected');
+      statusText.textContent = 'Webcam Sensor';
+      
+      webcamPreview.style.display = 'block';
+      lastMotionTime = Date.now();
+      
+      try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 320, height: 240, facingMode: 'user' } 
+        });
+        webcamVideo.srcObject = webcamStream;
+        
+        const ctx = webcamCanvas.getContext('2d');
+        webcamCanvas.width = 80;
+        webcamCanvas.height = 60;
+        
+        webcamInterval = setInterval(() => {
+          if (webcamVideo.paused || webcamVideo.ended) return;
+          
+          ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+          const currentFrame = ctx.getImageData(0, 0, webcamCanvas.width, webcamCanvas.height);
+          const data = currentFrame.data;
+          
+          if (!prevFrameData) {
+            prevFrameData = new Uint8ClampedArray(data);
+            return;
+          }
+          
+          let changedPixels = 0;
+          const totalPixels = webcamCanvas.width * webcamCanvas.height;
+          
+          // Spatial bounds of motion
+          let minX = webcamCanvas.width;
+          let maxX = 0;
+          let minY = webcamCanvas.height;
+          let maxY = 0;
+          
+          const sensitivityThreshold = 30; // Delta threshold
+          
+          for (let i = 0; i < data.length; i += 4) {
+            const r1 = data[i];
+            const g1 = data[i+1];
+            const b1 = data[i+2];
+            
+            const r2 = prevFrameData[i];
+            const g2 = prevFrameData[i+1];
+            const b2 = prevFrameData[i+2];
+            
+            const pixelDiff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
+            
+            if (pixelDiff > sensitivityThreshold) {
+              changedPixels++;
+              const pIdx = i / 4;
+              const x = pIdx % webcamCanvas.width;
+              const y = Math.floor(pIdx / webcamCanvas.width);
+              
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+          
+          // Store current frame for next comparison
+          prevFrameData.set(data);
+          
+          const motionEnergy = changedPixels / totalPixels;
+          webcamStats.textContent = `Motion: ${(motionEnergy * 100).toFixed(1)}%`;
+          
+          const now = Date.now();
+          const hasSignificantMotion = motionEnergy > 0.015; // 1.5% pixels changing
+          
+          if (hasSignificantMotion) {
+            lastMotionTime = now;
+          }
+          
+          const elapsed = now - lastMotionTime;
+          let presence = false;
+          let motionLvl = 'absent';
+          
+          if (elapsed < 4000) { // Active movement within 4s
+            presence = true;
+            motionLvl = hasSignificantMotion ? 'present_moving' : 'present_still';
+          } else if (elapsed < 15000) { // Still occupancy up to 15s
+            presence = true;
+            motionLvl = 'present_still';
+          } else { // Vacant
+            presence = false;
+            motionLvl = 'absent';
+          }
+          
+          // Distance approximation from bounding box area
+          let rssi = -65;
+          if (presence) {
+            const boxW = maxX - minX;
+            const boxH = maxY - minY;
+            const boxArea = boxW * boxH;
+            const relativeArea = boxArea / totalPixels;
+            
+            // Map box ratio [0.01, 0.5] to RSSI [-70, -38]
+            const normSize = Math.max(0, Math.min(1, (relativeArea - 0.01) / 0.49));
+            rssi = -70 + normSize * 32;
+          }
+          
+          const frame = {
+            type: 'sensing_update',
+            timestamp: now / 1000,
+            source: 'webcam_cv',
+            classification: {
+              presence: presence,
+              motion_level: motionLvl,
+              confidence: presence ? 0.94 : 0.99
+            },
+            features: {
+              mean_rssi: presence ? rssi : null,
+              motion_band_power: motionEnergy,
+              variance: motionEnergy
+            },
+            vital_signs: presence ? {
+              heart_rate_bpm: 70 + Math.sin(now / 5000) * 5,
+              breathing_rate_bpm: 14 + Math.sin(now / 10000) * 2
+            } : null
+          };
+          handleSensingFrame(frame);
+          
+        }, 100);
+        
+      } catch (err) {
+        console.error('Webcam acquisition failed:', err);
+        alert('Webcam access was denied or failed. Please check camera permissions.');
+        // Fallback to simulator
+        config.inputSource = 'simulator';
+        localStorage.setItem('ruview_input_source', 'simulator');
+        const radio = document.querySelector('input[name="inputSource"][value="simulator"]');
+        if (radio) radio.checked = true;
+        applyInputSource();
+      }
+    }
+
+    function stopWebcam() {
+      if (webcamInterval) {
+        clearInterval(webcamInterval);
+        webcamInterval = null;
+      }
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream = null;
+      }
+      webcamPreview.style.display = 'none';
+      prevFrameData = null;
+    }
+
+
+    /* --- CORE TELEMETRY RECEIVER & UI UPDATER --- */
+    function handleSensingFrame(data) {
+      const type = data.type || data.msg_type;
+      if (type === 'sensing_update') {
+        processCoreUpdate(data);
+      } else if (type === 'edge_vitals') {
+        processEdgeUpdate(data);
+      }
+    }
+
+    function processCoreUpdate(data) {
+      const cls = data.classification || {};
+      const present = !!cls.presence;
+      const confidence = cls.confidence != null ? Math.round(cls.confidence * 100) : null;
+      const motionLvl = cls.motion_level || 'absent';
+      
+      const features = data.features || {};
+      const meanRssi = features.mean_rssi;
+      const motionEnergy = features.motion_band_power || features.variance || 0;
+      
+      const numPersons = data.n_persons !== undefined ? data.n_persons : (present ? 1 : 0);
+      updatePresence(present, confidence, motionLvl, data.source, numPersons);
+
+      // Update RSSI and Radar
+      if (meanRssi != null) {
+        signalValue.textContent = `${Math.round(meanRssi)} dBm`;
+        distanceLabel.textContent = getCoarseDistanceText(meanRssi);
+        
+        if (!isDragging) {
+          updateRadarDots(numPersons, meanRssi, motionEnergy);
+        }
+      } else {
+        signalValue.textContent = '--';
+        distanceLabel.textContent = 'Unknown range';
+        if (!isDragging) {
+          updateRadarDots(0, 0, 0);
+        }
+      }
+
+      // Update Motion
+      motionValue.textContent = motionEnergy.toFixed(4);
+      let motionLabel = 'No Motion';
+      if (motionLvl === 'present_moving' || motionLvl === 'active') {
+        motionLabel = 'Active Motion';
+      } else if (motionLvl === 'present_still') {
+        motionLabel = 'Still / Breathing';
+      }
+      motionState.textContent = motionLabel;
+
+      // Update Vitals
+      const vitals = data.vital_signs;
+      if (vitals && present && (vitals.heart_rate_bpm || vitals.breathing_rate_bpm)) {
+        vitalsCard.style.display = 'block';
+        if (vitals.heart_rate_bpm) {
+          heartRateVal.textContent = `${Math.round(vitals.heart_rate_bpm)} bpm`;
+          heartIcon.classList.add('beat-animation');
+          const rate = 60 / vitals.heart_rate_bpm;
+          heartIcon.style.animationDuration = `${rate}s`;
+        } else {
+          heartRateVal.textContent = '-- bpm';
+          heartIcon.classList.remove('beat-animation');
+        }
+
+        if (vitals.breathing_rate_bpm) {
+          respRateVal.textContent = `${vitals.breathing_rate_bpm.toFixed(1)} bpm`;
+        } else {
+          respRateVal.textContent = '-- bpm';
+        }
+      } else {
+        vitalsCard.style.display = 'none';
+        heartIcon.classList.remove('beat-animation');
+      }
+    }
+
+    function processEdgeUpdate(data) {
+      const present = !!data.presence;
+      const motionLvl = data.motion ? 'present_moving' : (present ? 'present_still' : 'absent');
+      const confidence = data.presence_score != null ? Math.round(data.presence_score) : null;
+      
+      const numPersons = data.n_persons !== undefined ? data.n_persons : (present ? 1 : 0);
+      updatePresence(present, confidence, motionLvl, 'esp32_edge', numPersons);
+
+      if (data.rssi != null && data.rssi !== 0) {
+        signalValue.textContent = `${data.rssi} dBm`;
+        distanceLabel.textContent = getCoarseDistanceText(data.rssi);
+        
+        if (!isDragging) {
+          updateRadarDots(numPersons, data.rssi, data.motion_energy || 0.1);
+        }
+      } else {
+        signalValue.textContent = '--';
+        distanceLabel.textContent = 'Unknown range';
+        if (!isDragging) {
+          updateRadarDots(0, 0, 0);
+        }
+      }
+
+      const motionEnergy = data.motion_energy || 0;
+      motionValue.textContent = motionEnergy.toFixed(4);
+      motionState.textContent = data.motion ? 'Active Motion' : (present ? 'Still / Breathing' : 'No Motion');
+
+      vitalsCard.style.display = 'block';
+      if (data.heartrate_bpm > 0 && present) {
+        heartRateVal.textContent = `${Math.round(data.heartrate_bpm)} bpm`;
+        heartIcon.classList.add('beat-animation');
+        const rate = 60 / data.heartrate_bpm;
+        heartIcon.style.animationDuration = `${rate}s`;
+      } else {
+        heartRateVal.textContent = '-- bpm';
+        heartIcon.classList.remove('beat-animation');
+      }
+
+      if (data.breathing_rate_bpm > 0 && present) {
+        respRateVal.textContent = `${data.breathing_rate_bpm.toFixed(1)} bpm`;
+      } else {
+        respRateVal.textContent = '-- bpm';
+      }
+    }
+
+    function updatePresence(present, confidence, motionLvl, source, n_persons) {
+      const prevPresent = isCurrentlyPresent;
+      isCurrentlyPresent = present;
+
+      occupancyCard.className = 'card occupancy-card';
+      if (present) {
+        const countStr = n_persons > 1 ? ` (${n_persons} People)` : '';
+        if (motionLvl === 'present_still') {
+          occupancyCard.classList.add('still');
+          occupancyStatus.textContent = `Occupied${countStr} (Still)`;
+        } else {
+          occupancyCard.classList.add('occupied');
+          occupancyStatus.textContent = `Occupied${countStr}`;
+        }
+      } else {
+        occupancyStatus.textContent = 'Empty';
+      }
+
+      let metaStr = `Source: ${source}`;
+      if (confidence != null) {
+        metaStr += ` | Conf: ${confidence}%`;
+      }
+      occupancyMeta.textContent = metaStr;
+
+      if (present && !prevPresent) {
+        logEvent('entered');
+      } else if (!present && prevPresent) {
+        logEvent('left');
+      }
+    }
+
+    function getCoarseDistanceText(rssi) {
+      if (rssi > -45) return 'Very Close (Near Sensor)';
+      if (rssi > -58) return 'Short Range (~1-2 meters)';
+      if (rssi > -70) return 'Medium Range (~3-5 meters)';
+      return 'Far Range (Weak Signal)';
+    }
+
+    function positionRadarDot(rssi, motionEnergy) {
+      const minRssi = -35;
+      const maxRssi = -85;
+      
+      let percent = (rssi - minRssi) / (maxRssi - minRssi);
+      percent = Math.max(0.1, Math.min(0.9, percent));
+      
+      const time = Date.now() / 3000;
+      const angle = time % (2 * Math.PI); // Slow orbiting path
+      
+      const radiusPx = percent * (280 / 2);
+      const cx = 280 / 2;
+      const cy = 280 / 2;
+      
+      let x = cx + radiusPx * Math.cos(angle);
+      let y = cy + radiusPx * Math.sin(angle);
+      
+      if (motionEnergy > 0.05) {
+        const jitter = Math.min(10, motionEnergy * 50);
+        x += (Math.random() - 0.5) * jitter;
+        y += (Math.random() - 0.5) * jitter;
+        presenceDot.classList.add('vibrate');
+      } else {
+        presenceDot.classList.remove('vibrate');
+      }
+      
+      presenceDot.style.left = `${x}px`;
+      presenceDot.style.top = `${y}px`;
+      presenceDot.classList.add('visible');
+      
+      if (motionEnergy < 0.05) {
+        presenceDot.classList.add('still');
+      } else {
+        presenceDot.classList.remove('still');
+      }
+    }
+
+    const activeDots = []; // Array of presence dot DOM elements
+
+    function updateRadarDots(numPersons, rssi, motionEnergy) {
+      if (config.inputSource !== 'websocket') {
+        // In simulator/webcam mode, display legacy single dot and hide dynamic ones
+        if (presenceDot) {
+          presenceDot.style.display = 'flex';
+        }
+        for (const dot of activeDots) {
+          dot.classList.remove('visible');
+        }
+        if (numPersons > 0) {
+          positionRadarDot(rssi, motionEnergy);
+        } else {
+          if (presenceDot) presenceDot.classList.remove('visible');
+        }
+        return;
+      }
+
+      // WebSocket mode: use dynamic multiple presence dots
+      if (presenceDot) {
+        presenceDot.style.display = 'none';
+      }
+
+      const radarContainer = document.getElementById('radarContainer');
+      if (!radarContainer) return;
+
+      // Ensure we have at least numPersons dot elements in activeDots
+      while (activeDots.length < numPersons) {
+        const dotId = `presenceDot_${activeDots.length}`;
+        const newDot = document.createElement('div');
+        newDot.className = 'presence-dot';
+        newDot.id = dotId;
+        newDot.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
+          </svg>
+        `;
+        radarContainer.appendChild(newDot);
+        activeDots.push(newDot);
+      }
+
+      const minRssi = -35;
+      const maxRssi = -85;
+      let percent = (rssi - minRssi) / (maxRssi - minRssi);
+      percent = Math.max(0.1, Math.min(0.9, percent));
+      const radiusPx = percent * (280 / 2);
+      const cx = 280 / 2;
+      const cy = 280 / 2;
+
+      const time = Date.now() / 3000;
+
+      const baseAngles = [
+        3 * Math.PI / 2, // Zone 2 (Center)
+        Math.PI,         // Zone 1 (Left)
+        0,               // Zone 3 (Right)
+        5 * Math.PI / 4, // Left-Center
+        7 * Math.PI / 4  // Right-Center
+      ];
+
+      for (let i = 0; i < activeDots.length; i++) {
+        const dot = activeDots[i];
+        if (i < numPersons) {
+          const baseAngle = baseAngles[i % baseAngles.length];
+          
+          // Slow dynamic wandering to simulate movement
+          const wanderSpeed = 1 + i * 0.5;
+          const wanderRange = motionEnergy > 0.05 ? 0.35 : 0.02;
+          const wanderAngle = baseAngle + Math.sin(time * wanderSpeed) * wanderRange;
+          
+          // Radial jitter/offset to prevent direct vertical overlaps
+          const distSpeed = 1.5 + i * 0.3;
+          const distOffset = Math.cos(time * distSpeed) * 0.08 * (280 / 2);
+          const finalRadius = Math.max(15, Math.min(280 / 2 * 0.95, radiusPx + distOffset));
+
+          let x = cx + finalRadius * Math.cos(wanderAngle);
+          let y = cy + finalRadius * Math.sin(wanderAngle);
+
+          // High frequency jitter if active
+          if (motionEnergy > 0.05) {
+            const jitter = Math.min(10, motionEnergy * 50);
+            x += (Math.random() - 0.5) * jitter;
+            y += (Math.random() - 0.5) * jitter;
+            dot.classList.add('vibrate');
+          } else {
+            dot.classList.remove('vibrate');
+          }
+
+          dot.style.left = `${x}px`;
+          dot.style.top = `${y}px`;
+          dot.classList.add('visible');
+
+          if (motionEnergy < 0.05) {
+            dot.classList.add('still');
+          } else {
+            dot.classList.remove('still');
+          }
+        } else {
+          dot.classList.remove('visible');
+        }
+      }
+    }
+
+    function logEvent(type) {
+      const timestamp = new Date();
+      const timeStr = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      const newEvent = {
+        type,
+        time: timeStr,
+        timestamp: timestamp.getTime()
+      };
+
+      presenceHistory.unshift(newEvent);
+      if (presenceHistory.length > 50) {
+        presenceHistory.pop();
+      }
+
+      localStorage.setItem('ruview_presence_history', JSON.stringify(presenceHistory));
+      renderEvent(newEvent, true);
+    }
+
+    function renderEvent(event, prepend = false) {
+      const emptyMsg = logList.querySelector('.log-empty');
+      if (emptyMsg) {
+        emptyMsg.remove();
+      }
+
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      
+      const isEntered = event.type === 'entered';
+      const iconHtml = isEntered 
+        ? `<div class="log-icon entered">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+               <polyline points="20 6 9 17 4 12"></polyline>
+             </svg>
+           </div>`
+        : `<div class="log-icon left">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+               <line x1="18" y1="6" x2="6" y2="18"></line>
+               <line x1="6" y1="6" x2="18" y2="18"></line>
+             </svg>
+           </div>`;
+
+      const title = isEntered ? 'Room Occupied' : 'Room Vacated';
+      const detailText = isEntered ? 'Human presence detected' : 'Room became empty';
+
+      item.innerHTML = `
+        ${iconHtml}
+        <div class="log-content">
+          <div class="log-title">${title}</div>
+          <div style="font-size: 0.75rem; color: var(--color-text-muted);">${detailText}</div>
+          <div class="log-time">${event.time}</div>
+        </div>
+      `;
+
+      if (prepend) {
+        logList.insertBefore(item, logList.firstChild);
+      } else {
+        logList.appendChild(item);
+      }
+    }
+
+    function loadEventLog() {
+      const stored = localStorage.getItem('ruview_presence_history');
+      if (stored) {
+        try {
+          presenceHistory = JSON.parse(stored);
+          if (presenceHistory.length > 0) {
+            logList.innerHTML = '';
+            presenceHistory.forEach(event => {
+              renderEvent(event);
+            });
+            return;
+          }
+        } catch(e) {
+          console.warn('Failed to parse presence history');
+          presenceHistory = [];
+        }
+      }
+      renderEmptyLogState();
+    }
+
+    function clearEventLog() {
+      if (confirm('Clear presence event history?')) {
+        presenceHistory = [];
+        localStorage.removeItem('ruview_presence_history');
+        renderEmptyLogState();
+      }
+    }
+
+    function renderEmptyLogState() {
+      logList.innerHTML = `
+        <div class="log-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <div>No presence events logged yet</div>
+        </div>
+      `;
+    }
+
+    // Page Load
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

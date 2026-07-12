@@ -1,0 +1,4 @@
+{
+  "__comment": "Map your device MAC addresses to friendly names. Disable MAC randomization on your phone first! iOS: Settings > WiFi > (i) > Private Address OFF. Android: WiFi > (settings) > Privacy > Use device MAC.",
+  "devices": []
+}
