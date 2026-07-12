@@ -15,8 +15,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.config.settings import Settings
 from src.services.orchestrator import ServiceOrchestrator
-from src.middleware.auth import AuthenticationMiddleware
-from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.error_handler import ErrorHandlingMiddleware
 from src.api.routers import pose, stream, health
 from src.api.websocket.connection_manager import connection_manager
@@ -96,10 +94,14 @@ def setup_middleware(app: FastAPI, settings: Settings):
     
     # Rate limiting middleware
     if settings.enable_rate_limiting:
+        from src.middleware.rate_limit import RateLimitMiddleware
+
         app.add_middleware(RateLimitMiddleware, settings=settings)
     
     # Authentication middleware
     if settings.enable_authentication:
+        from src.middleware.auth import AuthenticationMiddleware
+
         app.add_middleware(AuthenticationMiddleware, settings=settings)
     
     # CORS middleware

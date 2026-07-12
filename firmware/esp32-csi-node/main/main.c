@@ -21,6 +21,7 @@
 #include "led_strip.h"
 
 #include "csi_collector.h"
+#include "wifi_scanner.h"
 #include "stream_sender.h"
 #include "nvs_config.h"
 #include "edge_processing.h"
@@ -299,6 +300,14 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to initialize UDP sender");
         return;
     }
+
+    /* Start WiFi probe-request scanner for smartphone tracking.
+     * Sends scan results to bridge on port 5006 (CSI telemetry is on 5005). */
+    esp_err_t scan_ret = wifi_scanner_init(g_nvs_config.target_ip, 5006);
+    if (scan_ret != ESP_OK) {
+        ESP_LOGW(TAG, "WiFi scanner init failed: %s (smartphone tracking disabled)",
+                 esp_err_to_name(scan_ret));
+    }
 #endif
 
     /* Initialize CSI collection */
@@ -487,7 +496,10 @@ void app_main(void)
 #else
     bool has_display = false;                 /* display support not compiled in */
 #endif
-    if (!has_display) {
+    /* Disable data capture to avoid loopback storm where the AP re-transmits
+     * the UDP telemetry packets over WiFi, triggering infinite CSI loops.
+     * Staying in MGMT-only mode provides a stable 10 Hz beacon CSI source. */
+    if (false && !has_display) {
         csi_collector_enable_data_capture();
     }
 

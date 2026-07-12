@@ -288,7 +288,7 @@ export class BodyModel {
   // 5:left_shoulder, 6:right_shoulder, 7:left_elbow, 8:right_elbow,
   // 9:left_wrist, 10:right_wrist, 11:left_hip, 12:right_hip,
   // 13:left_knee, 14:right_knee, 15:left_ankle, 16:right_ankle
-  updateFromKeypoints(keypoints, personConfidence) {
+  updateFromKeypoints(keypoints, personConfidence, zPos, yPos, rotationY) {
     if (!keypoints || keypoints.length < 17) return;
 
     this.confidence = personConfidence || 0;
@@ -419,6 +419,17 @@ export class BodyModel {
     // Apply global position offset (person location in room)
     // Shift the body model to world position
     this.group.position.x = centerX;
+    this.group.position.y = yPos !== undefined ? yPos : 0;
+    if (zPos !== undefined) {
+      this.group.position.z = zPos;
+    } else {
+      this.group.position.z = 0;
+    }
+    if (rotationY !== undefined) {
+      this.group.rotation.y = rotationY;
+    } else {
+      this.group.rotation.y = 0;
+    }
   }
 
   _avgCoord(keypoints, indices, coord) {
@@ -590,7 +601,7 @@ export class BodyModelManager {
 
         // Update the model
         if (person.keypoints) {
-          model.updateFromKeypoints(person.keypoints, person.confidence);
+          model.updateFromKeypoints(person.keypoints, person.confidence, person.z, person.y, person.rotationY);
         }
 
         // Activate DensePose parts if available

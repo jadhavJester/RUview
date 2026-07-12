@@ -2,7 +2,6 @@
 FastAPI middleware package
 """
 
-from .auth import AuthMiddleware
-from .rate_limit import RateLimitMiddleware
+"""Middleware implementations are imported lazily by callers."""
 
 __all__ = ["AuthMiddleware", "RateLimitMiddleware"]

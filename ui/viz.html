@@ -107,18 +107,22 @@
   <script type="module">
     import * as ThreeNS from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    const THREE = { ...ThreeNS, OrbitControls };
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { StorageService } from './services/storage.service.js';
+    
+    const THREE = { ...ThreeNS, OrbitControls, GLTFLoader };
     window.THREE = THREE;
 
     // Component modules use `THREE.*` as a global — must be installed first.
-    const { Scene } = await import('./components/scene.js');
-    const { BodyModel, BodyModelManager } = await import('./components/body-model.js');
-    const { SignalVisualization } = await import('./components/signal-viz.js');
-    const { Environment } = await import('./components/environment.js');
-    const { DashboardHUD } = await import('./components/dashboard-hud.js');
-    const { WebSocketClient } = await import('./services/websocket-client.js');
-    const { DataProcessor } = await import('./services/data-processor.js');
-    const { buildSensingWsUrl } = await import('./services/sensing.service.js');
+    const version = new URLSearchParams(window.location.search).get('v') || Date.now();
+    const { Scene } = await import(`./components/scene.js?v=${version}`);
+    const { BodyModel, BodyModelManager } = await import(`./components/body-model.js?v=${version}`);
+    const { SignalVisualization } = await import(`./components/signal-viz.js?v=${version}`);
+    const { Environment } = await import(`./components/environment.js?v=${version}`);
+    const { DashboardHUD } = await import(`./components/dashboard-hud.js?v=${version}`);
+    const { WebSocketClient } = await import(`./services/websocket-client.js?v=${version}`);
+    const { DataProcessor } = await import(`./services/data-processor.js?v=${version}`);
+    const { buildSensingWsUrl } = await import(`./services/sensing.service.js?v=${version}`);
 
     // -- Application State --
     const state = {
@@ -131,7 +135,8 @@
       dataProcessor: null,
       stats: null,
       isDemoMode: true,
-      startTime: Date.now()
+      startTime: Date.now(),
+      lastVitals: { heartRate: 0, breathingRate: 0 }
     };
 
     // -- Loading Progress --
@@ -184,6 +189,50 @@
 
         // 5. Dashboard HUD
         state.hud = new DashboardHUD(container);
+
+        // Wire up 3D room scan calibration handlers
+        state.hud.onModelUpload = async (arrayBuffer, fileName) => {
+          try {
+            await StorageService.saveRoomModel(arrayBuffer);
+            await state.environment.loadCustomRoomFromArrayBuffer(arrayBuffer);
+            console.log('[Viz] Custom room model saved and loaded.');
+          } catch (err) {
+            console.error('[Viz] Error loading model:', err);
+            throw err;
+          }
+        };
+
+        state.hud.onTransformChange = (config) => {
+          StorageService.saveModelConfig(config);
+          state.environment.applyCustomModelTransform(config);
+        };
+
+        state.hud.onClearModel = async () => {
+          await StorageService.clearRoomModel();
+          state.environment.clearCustomRoom();
+          console.log('[Viz] Custom room model cleared.');
+        };
+
+        // Populate initial UI slider values and status text from stored config/state
+        const storedConfig = StorageService.getModelConfig();
+        state.hud.setSliders(storedConfig);
+
+        const hasStoredModel = await StorageService.getRoomModel();
+        if (hasStoredModel) {
+          state.hud.setStatus('Active: Loaded from cache', '#00ff88');
+        } else {
+          try {
+            const res = await fetch('./room.glb', { method: 'HEAD' });
+            if (res.ok) {
+              state.hud.setStatus('Active: Served from room.glb', '#00ff88');
+            } else {
+              state.hud.setStatus('No custom model loaded', '#445566');
+            }
+          } catch (e) {
+            state.hud.setStatus('No custom model loaded', '#445566');
+          }
+        }
+
         setLoadingProgress(75, 'Initializing data processor...');
 
         // 6. Data processor
@@ -244,6 +293,10 @@
         // Generate demo signal data
         const demoSignal = SignalVisualization.generateDemoData(elapsed);
         state.signalViz.updateSignalData(demoSignal);
+
+        // Demo vitals
+        state.lastVitals.heartRate = 72 + Math.sin(elapsed * 0.1) * 5;
+        state.lastVitals.breathingRate = 16 + Math.cos(elapsed * 0.05) * 2;
       }
 
       // If we have viz data (from demo or last processed real data), update visualizations
@@ -280,7 +333,9 @@
           uptime: wsMetrics.uptime,
           personCount: state.bodyModelManager.getActiveCount(),
           confidence: state.bodyModelManager.getAverageConfidence(),
-          sensingMode: state.isDemoMode ? 'Mock' : (state.wsClient.isRealData ? 'CSI' : 'Mock')
+          sensingMode: state.isDemoMode ? 'Mock' : (state.wsClient.isRealData ? 'CSI' : 'Mock'),
+          heartRate: state.lastVitals.heartRate,
+          breathingRate: state.lastVitals.breathingRate
         });
       }
 
@@ -290,33 +345,46 @@
 
     // -- Handle incoming WebSocket messages --
     function handleWebSocketMessage(message) {
-      const processed = state.dataProcessor.processMessage(message);
-      if (!processed) return;
+      if (message.type === 'sensing_update' && !state.isDemoMode) {
+        state.isDemoMode = false;
+      } else if (message.type === 'sensing_update') {
+        state.isDemoMode = false;
+        console.log('[VIZ] Switched to live sensing_update mode');
+      }
 
-      // Switch off demo mode when we get real data
-      if (processed.persons.length > 0) {
+      if (message.msg_type === 'edge_vitals') {
         if (state.isDemoMode) {
           state.isDemoMode = false;
           console.log('[VIZ] Switched to live data mode');
         }
-
-        // Update body models
-        state.bodyModelManager.update(processed.persons, 0.016);
-
-        // Update zone occupancy
-        state.environment.updateZoneOccupancy(processed.zoneOccupancy);
-
-        // Update signal data if available
-        if (processed.signalData) {
-          state.signalViz.updateSignalData(processed.signalData);
+        if (message.presence) {
+          state.lastVitals.heartRate = message.heartrate_bpm;
+          state.lastVitals.breathingRate = message.breathing_rate_bpm;
+        } else {
+          state.lastVitals.heartRate = 0;
+          state.lastVitals.breathingRate = 0;
         }
-
-        // Update confidence heatmap
-        const heatmap = state.dataProcessor.generateConfidenceHeatmap(
-          processed.persons, 20, 15, 8, 6
-        );
-        state.environment.updateConfidenceHeatmap(heatmap);
       }
+
+      const processed = state.dataProcessor.processMessage(message);
+      if (!processed) return;
+
+      // Update body models
+      state.bodyModelManager.update(processed.persons, 0.016);
+
+      // Update zone occupancy
+      state.environment.updateZoneOccupancy(processed.zoneOccupancy);
+
+      // Update signal data if available
+      if (processed.signalData) {
+        state.signalViz.updateSignalData(processed.signalData);
+      }
+
+      // Update confidence heatmap
+      const heatmap = state.dataProcessor.generateConfidenceHeatmap(
+        processed.persons, 20, 15, 8, 6
+      );
+      state.environment.updateConfidenceHeatmap(heatmap);
     }
 
     // -- Handle WebSocket connection state changes --

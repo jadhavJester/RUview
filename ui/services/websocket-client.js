@@ -152,7 +152,11 @@ export class WebSocketClient {
       }
 
       // Detect real vs mock data from metadata
-      if (data.data && data.data.metadata) {
+      if (data.type === 'sensing_update' && data._simulated !== true) {
+        this.isRealData = true;
+      } else if (data.msg_type === 'edge_vitals') {
+        this.isRealData = true;
+      } else if (data.data && data.data.metadata) {
         this.isRealData = data.data.metadata.mock_data === false && data.data.metadata.source !== 'mock';
       } else if (data.metadata) {
         this.isRealData = data.metadata.mock_data === false;

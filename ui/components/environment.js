@@ -1,3 +1,5 @@
+import { StorageService } from '../services/storage.service.js';
+
 // Room Environment - WiFi DensePose 3D Visualization
 // Grid floor, AP/receiver markers, detection zones, confidence heatmap
 
@@ -6,6 +8,12 @@ export class Environment {
     this.scene = scene;
     this.group = new THREE.Group();
     this.group.name = 'environment';
+
+    // Custom room scan group
+    this.customRoomGroup = new THREE.Group();
+    this.customRoomGroup.name = 'custom_room';
+    this.group.add(this.customRoomGroup);
+    this.customRoomMesh = null;
 
     // Room dimensions (meters)
     this.roomWidth = 8;
@@ -45,6 +53,9 @@ export class Environment {
     this._buildConfidenceHeatmap();
 
     this.scene.add(this.group);
+    
+    // Load custom room scan if available in DB
+    this._loadCustomRoomScan();
   }
 
   _buildFloor() {
@@ -115,6 +126,9 @@ export class Environment {
   }
 
   _buildWalls() {
+    this.wallsGroup = new THREE.Group();
+    this.wallsGroup.name = 'walls';
+
     // Subtle transparent walls to define the room boundary
     const wallMat = new THREE.MeshBasicMaterial({
       color: 0x112244,
@@ -131,25 +145,25 @@ export class Environment {
     // Back wall
     const backWall = new THREE.Mesh(new THREE.PlaneGeometry(this.roomWidth, h), wallMat);
     backWall.position.set(0, h / 2, -halfD);
-    this.group.add(backWall);
+    this.wallsGroup.add(backWall);
 
     // Front wall (more transparent)
     const frontMat = wallMat.clone();
     frontMat.opacity = 0.03;
     const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(this.roomWidth, h), frontMat);
     frontWall.position.set(0, h / 2, halfD);
-    this.group.add(frontWall);
+    this.wallsGroup.add(frontWall);
 
     // Side walls
     const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(this.roomDepth, h), wallMat);
     leftWall.rotation.y = Math.PI / 2;
     leftWall.position.set(-halfW, h / 2, 0);
-    this.group.add(leftWall);
+    this.wallsGroup.add(leftWall);
 
     const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(this.roomDepth, h), wallMat);
     rightWall.rotation.y = -Math.PI / 2;
     rightWall.position.set(halfW, h / 2, 0);
-    this.group.add(rightWall);
+    this.wallsGroup.add(rightWall);
 
     // Wall edge lines
     const edgeMat = new THREE.LineBasicMaterial({
@@ -177,8 +191,10 @@ export class Environment {
     for (const e of edges) {
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(e), 3));
-      this.group.add(new THREE.Line(geom, edgeMat));
+      this.wallsGroup.add(new THREE.Line(geom, edgeMat));
     }
+
+    this.group.add(this.wallsGroup);
   }
 
   _buildAPMarkers() {
@@ -461,6 +477,130 @@ export class Environment {
 
   getGroup() {
     return this.group;
+  }
+
+  async _loadCustomRoomScan() {
+    try {
+      let arrayBuffer = await StorageService.getRoomModel();
+      let isFromDB = true;
+
+      if (!arrayBuffer) {
+        console.log('[Environment] No custom 3D room scan model found in IndexedDB. Checking server fallback...');
+        try {
+          const response = await fetch('./room.glb');
+          if (response.ok) {
+            arrayBuffer = await response.arrayBuffer();
+            isFromDB = false;
+            console.log('[Environment] Found room.glb on local server.');
+          }
+        } catch (fetchErr) {
+          console.log('[Environment] Local server room.glb fetch failed:', fetchErr);
+        }
+      }
+
+      if (!arrayBuffer) {
+        console.log('[Environment] No custom 3D room scan model found.');
+        return;
+      }
+
+      console.log('[Environment] Parsing 3D room scan model...');
+      const loader = new THREE.GLTFLoader();
+      
+      loader.parse(arrayBuffer, '', (gltf) => {
+        this.clearCustomRoom();
+        
+        this.customRoomMesh = gltf.scene;
+        this.customRoomGroup.add(this.customRoomMesh);
+        
+        // Hide standard wireframe walls
+        if (this.wallsGroup) {
+          this.wallsGroup.visible = false;
+        }
+        
+        // Apply saved transformation config
+        const config = StorageService.getModelConfig();
+        this.applyCustomModelTransform(config);
+        
+        console.log('[Environment] Custom 3D room scan model loaded successfully.');
+        
+        // Notify HUD status text of success
+        const hudStatusText = document.getElementById('hud-model-status');
+        if (hudStatusText) {
+          hudStatusText.textContent = isFromDB ? 'Active: Loaded from cache' : 'Active: Served from room.glb';
+          hudStatusText.style.color = '#00ff88';
+        }
+      }, (error) => {
+        console.error('[Environment] Error parsing custom GLB model:', error);
+      });
+    } catch (e) {
+      console.error('[Environment] Failed to load custom room scan:', e);
+    }
+  }
+
+  applyCustomModelTransform(config) {
+    if (!this.customRoomMesh) return;
+    
+    // Apply position
+    this.customRoomMesh.position.set(config.posX, config.posY, config.posZ);
+    
+    // Apply rotation (in degrees to radians)
+    this.customRoomMesh.rotation.x = ((config.rotX || 0) * Math.PI) / 180;
+    this.customRoomMesh.rotation.y = ((config.rotY || 0) * Math.PI) / 180;
+    this.customRoomMesh.rotation.z = ((config.rotZ || 0) * Math.PI) / 180;
+    
+    // Apply uniform scale
+    this.customRoomMesh.scale.setScalar(config.scale);
+  }
+
+  loadCustomRoomFromArrayBuffer(arrayBuffer) {
+    const loader = new THREE.GLTFLoader();
+    return new Promise((resolve, reject) => {
+      loader.parse(arrayBuffer, '', (gltf) => {
+        this.clearCustomRoom();
+        
+        this.customRoomMesh = gltf.scene;
+        this.customRoomGroup.add(this.customRoomMesh);
+        
+        if (this.wallsGroup) {
+          this.wallsGroup.visible = false;
+        }
+        
+        // Default configuration
+        const defaultConfig = { scale: 1.0, posX: 0.0, posY: 0.0, posZ: 0.0, rotY: 0.0 };
+        this.applyCustomModelTransform(defaultConfig);
+        StorageService.saveModelConfig(defaultConfig);
+        
+        resolve(true);
+      }, (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  clearCustomRoom() {
+    this.customRoomGroup.traverse((child) => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    });
+    
+    while (this.customRoomGroup.children.length > 0) {
+      this.customRoomGroup.remove(this.customRoomGroup.children[0]);
+    }
+    
+    this.customRoomMesh = null;
+    
+    // Restore default wireframe walls
+    if (this.wallsGroup) {
+      this.wallsGroup.visible = true;
+    }
   }
 
   dispose() {

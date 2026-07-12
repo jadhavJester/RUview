@@ -6,20 +6,19 @@ All mock/synthetic data generation is isolated in src.testing and is only
 invoked when settings.mock_pose_data is explicitly True.
 """
 
+from __future__ import annotations
+
 import logging
 import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
 import numpy as np
-import torch
 
 from src.config.settings import Settings
 from src.config.domains import DomainConfig
 from src.core.csi_processor import CSIProcessor
 from src.core.phase_sanitizer import PhaseSanitizer
-from src.models.densepose_head import DensePoseHead
-from src.models.modality_translation import ModalityTranslationNetwork
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +106,9 @@ class PoseService:
     async def _initialize_models(self):
         """Initialize neural network models."""
         try:
+            from src.models.densepose_head import DensePoseHead
+            from src.models.modality_translation import ModalityTranslationNetwork
+
             # Initialize DensePose model. DensePoseHead requires a config
             # dict — input_channels matches the modality translator's output
             # (256), with the standard DensePose 24 body parts and 2 (U,V)
@@ -250,6 +252,8 @@ class PoseService:
             return self._generate_mock_poses()
         
         try:
+            import torch
+
             # Convert CSI data to tensor
             csi_tensor = torch.from_numpy(csi_data).float()
             

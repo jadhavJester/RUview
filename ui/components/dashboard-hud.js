@@ -17,13 +17,21 @@ export class DashboardHUD {
       sensingMode: 'Mock',    // CSI, RSSI, Mock
       latency: 0,
       messageCount: 0,
-      uptime: 0
+      uptime: 0,
+      heartRate: 0,
+      breathingRate: 0
     };
 
     this._fpsFrames = [];
     this._lastFpsUpdate = 0;
 
+    // Callback pointers for custom 3D model interaction
+    this.onModelUpload = null;
+    this.onTransformChange = null;
+    this.onClearModel = null;
+
     this._build();
+    this._bindEvents();
   }
 
   _build() {
@@ -42,9 +50,6 @@ export class DashboardHUD {
           z-index: 100;
           font-family: 'Courier New', 'Consolas', monospace;
           color: #88ccff;
-        }
-        #viz-hud * {
-          pointer-events: none;
         }
 
         /* Data source banner */
@@ -241,10 +246,123 @@ export class DashboardHUD {
           text-align: center;
           opacity: 0.6;
         }
+
+        /* Navigation tabs switcher */
+        .hud-nav-tabs {
+          position: absolute;
+          top: 40px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          gap: 6px;
+          background: rgba(13, 17, 33, 0.85);
+          border: 1px solid rgba(0, 242, 254, 0.2);
+          border-radius: 10px;
+          padding: 3px;
+          pointer-events: auto !important;
+          z-index: 220;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+        }
+        .hud-nav-tabs * {
+          pointer-events: auto !important;
+        }
+        .hud-nav-tab {
+          padding: 6px 14px;
+          font-size: 10px;
+          font-family: 'Space Grotesk', sans-serif;
+          color: #8a99ad;
+          background: transparent;
+          border: none;
+          border-radius: 7px;
+          cursor: pointer;
+          font-weight: bold;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          transition: all 0.25s ease;
+        }
+        .hud-nav-tab.active {
+          color: #00ff88;
+          background: rgba(0, 255, 136, 0.15);
+          border: 1px solid rgba(0, 255, 136, 0.25);
+        }
+        .hud-nav-tab:hover:not(.active) {
+          color: #fff;
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Settings panel styling */
+        .hud-settings-toggle {
+          position: absolute;
+          top: 90px;
+          right: 12px;
+          width: 30px;
+          height: 30px;
+          background: rgba(13, 17, 33, 0.8);
+          border: 1px solid rgba(0, 242, 254, 0.2);
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #8a99ad;
+          cursor: pointer;
+          pointer-events: auto !important;
+          z-index: 210;
+          transition: all 0.25s ease;
+        }
+        .hud-settings-toggle:hover {
+          color: #00f2fe;
+          border-color: rgba(0, 242, 254, 0.4);
+          box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+        }
+        .hud-settings-toggle * {
+          pointer-events: none;
+        }
+        .hud-settings-panel {
+          position: absolute;
+          top: 130px;
+          right: 12px;
+          width: 250px;
+          background: rgba(10, 14, 28, 0.95);
+          border: 1px solid rgba(0, 242, 254, 0.2);
+          border-radius: 12px;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          pointer-events: none;
+          opacity: 0;
+          transform: translateY(-10px);
+          transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+          z-index: 210;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+        .hud-settings-panel.active {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto !important;
+        }
+        .hud-settings-panel * {
+          pointer-events: auto;
+        }
+        .hud-form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
       </style>
 
       <!-- Data source banner -->
       <div class="hud-banner mock" id="hud-banner">MOCK DATA</div>
+
+      <!-- Navigation Tab Switcher -->
+      <div class="hud-nav-tabs">
+        <button class="hud-nav-tab" onclick="window.location.href='tracker.html' + window.location.search">2D Radar</button>
+        <button class="hud-nav-tab active">3D Room</button>
+      </div>
 
       <!-- Corner decorations -->
       <div class="hud-corner tl"></div>
@@ -294,6 +412,14 @@ export class DashboardHUD {
         <div class="hud-confidence-bar">
           <div class="hud-confidence-fill" id="hud-confidence-fill" style="width: 0%; background: #334455;"></div>
         </div>
+        <div class="hud-row" style="margin-top: 8px;">
+          <span class="hud-label">Heart Rate</span>
+          <span class="hud-value" id="hud-heartrate">-- bpm</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Breathing</span>
+          <span class="hud-value" id="hud-breathing">-- bpm</span>
+        </div>
       </div>
 
       <!-- Bottom-right: sensing mode -->
@@ -307,6 +433,98 @@ export class DashboardHUD {
       <!-- Controls hint -->
       <div class="hud-controls-hint">
         Drag to orbit | Scroll to zoom | Right-click to pan
+      </div>
+
+      <!-- Settings Panel Toggle Button -->
+      <div class="hud-settings-toggle" id="hud-settings-toggle" title="Digital Twin Settings">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="hud-settings-panel" id="hud-settings-panel">
+        <div style="font-size: 11px; font-weight: bold; color: #00f2fe; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px; margin-bottom: 4px; font-family: 'Space Grotesk', sans-serif;">
+          3D Digital Twin Settings
+        </div>
+        
+        <!-- File upload -->
+        <div class="hud-form-group">
+          <label style="font-size: 9px; color: #5588aa; text-transform: uppercase; display: block; margin-bottom: 4px; font-family: 'Space Grotesk', sans-serif;">Upload Room Model (.glb)</label>
+          <input type="file" id="hud-model-input" accept=".glb,.gltf" style="display: none;">
+          <button id="hud-upload-btn" style="width: 100%; padding: 8px; font-size: 10px; font-family: inherit; font-weight: bold; background: rgba(0, 242, 254, 0.1); border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 6px; color: #00f2fe; cursor: pointer; transition: all 0.2s;">
+            CHOOSE MESH FILE
+          </button>
+          <div id="hud-model-status" style="font-size: 9px; color: #445566; margin-top: 4px; text-align: center;">No custom model loaded</div>
+        </div>
+
+        <!-- Sliders -->
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>SCALE</span>
+            <span id="hud-val-scale" style="color: #aaddff; font-weight: bold;">1.00x</span>
+          </div>
+          <input type="range" id="hud-slide-scale" min="0.1" max="5" step="0.05" value="1.0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>POSITION X</span>
+            <span id="hud-val-posX" style="color: #aaddff; font-weight: bold;">0.0m</span>
+          </div>
+          <input type="range" id="hud-slide-posX" min="-10" max="10" step="0.1" value="0.0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>POSITION Y</span>
+            <span id="hud-val-posY" style="color: #aaddff; font-weight: bold;">0.0m</span>
+          </div>
+          <input type="range" id="hud-slide-posY" min="-5" max="5" step="0.1" value="0.0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>POSITION Z</span>
+            <span id="hud-val-posZ" style="color: #aaddff; font-weight: bold;">0.0m</span>
+          </div>
+          <input type="range" id="hud-slide-posZ" min="-10" max="10" step="0.1" value="0.0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>ROTATION X (PITCH)</span>
+            <span id="hud-val-rotX" style="color: #aaddff; font-weight: bold;">0°</span>
+          </div>
+          <input type="range" id="hud-slide-rotX" min="-180" max="180" step="1" value="0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>ROTATION Y (YAW)</span>
+            <span id="hud-val-rotY" style="color: #aaddff; font-weight: bold;">0°</span>
+          </div>
+          <input type="range" id="hud-slide-rotY" min="0" max="360" step="1" value="0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <div class="hud-form-group">
+          <div style="display: flex; justify-content: space-between; font-size: 9px; color: #5588aa; margin-bottom: 2px;">
+            <span>ROTATION Z (ROLL)</span>
+            <span id="hud-val-rotZ" style="color: #aaddff; font-weight: bold;">0°</span>
+          </div>
+          <input type="range" id="hud-slide-rotZ" min="-180" max="180" step="1" value="0" style="width: 100%; accent-color: #00f2fe; cursor: pointer;">
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <button id="hud-reset-btn" style="flex: 1; padding: 6px; font-size: 9px; font-family: inherit; font-weight: bold; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #8a99ad; cursor: pointer; transition: all 0.2s;">
+            RESET ALIGN
+          </button>
+          <button id="hud-clear-btn" style="flex: 1; padding: 6px; font-size: 9px; font-family: inherit; font-weight: bold; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; color: #ef4444; cursor: pointer; transition: all 0.2s;">
+            REMOVE SCAN
+          </button>
+        </div>
       </div>
     `;
 
@@ -326,7 +544,9 @@ export class DashboardHUD {
       personCount: this.hudElement.querySelector('#hud-person-count'),
       confidence: this.hudElement.querySelector('#hud-confidence'),
       confidenceFill: this.hudElement.querySelector('#hud-confidence-fill'),
-      modeBadge: this.hudElement.querySelector('#hud-mode-badge')
+      modeBadge: this.hudElement.querySelector('#hud-mode-badge'),
+      heartrate: this.hudElement.querySelector('#hud-heartrate'),
+      breathing: this.hudElement.querySelector('#hud-breathing')
     };
   }
 
@@ -419,6 +639,145 @@ export class DashboardHUD {
     const modeLower = (state.sensingMode || 'Mock').toLowerCase();
     this._els.modeBadge.textContent = state.sensingMode.toUpperCase();
     this._els.modeBadge.className = `hud-mode-badge ${modeLower}`;
+
+    // Vitals
+    if (state.heartRate > 0) {
+      this._els.heartrate.textContent = `${state.heartRate.toFixed(1)} bpm`;
+      this._els.heartrate.style.color = '#ff3366'; // heartbeat pink
+    } else {
+      this._els.heartrate.textContent = '-- bpm';
+      this._els.heartrate.style.color = '#556677';
+    }
+
+    if (state.breathingRate > 0) {
+      this._els.breathing.textContent = `${state.breathingRate.toFixed(1)} bpm`;
+      this._els.breathing.style.color = '#33ccff'; // breathing blue
+    } else {
+      this._els.breathing.textContent = '-- bpm';
+      this._els.breathing.style.color = '#556677';
+    }
+  }
+
+  _bindEvents() {
+    const toggle = this.hudElement.querySelector('#hud-settings-toggle');
+    const panel = this.hudElement.querySelector('#hud-settings-panel');
+    const uploadBtn = this.hudElement.querySelector('#hud-upload-btn');
+    const fileInput = this.hudElement.querySelector('#hud-model-input');
+    const resetBtn = this.hudElement.querySelector('#hud-reset-btn');
+    const clearBtn = this.hudElement.querySelector('#hud-clear-btn');
+    const statusText = this.hudElement.querySelector('#hud-model-status');
+
+    // Toggle settings panel
+    toggle.addEventListener('click', () => {
+      panel.classList.toggle('active');
+    });
+
+    // File input trigger
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    // File selection
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      statusText.textContent = 'Loading ' + file.name + '...';
+      uploadBtn.disabled = true;
+
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const arrayBuffer = e.target.result;
+          if (this.onModelUpload) {
+            await this.onModelUpload(arrayBuffer, file.name);
+          }
+          statusText.textContent = 'Active: ' + file.name;
+          statusText.style.color = '#00ff88';
+          uploadBtn.disabled = false;
+          // Reset slider UI values to defaults
+          this.setSliders({ scale: 1.0, posX: 0.0, posY: 0.0, posZ: 0.0, rotX: 0.0, rotY: 0.0, rotZ: 0.0 });
+        };
+        reader.readAsArrayBuffer(file);
+      } catch (err) {
+        console.error('[HUD] Upload error:', err);
+        statusText.textContent = 'Load failed';
+        statusText.style.color = '#ff3344';
+        uploadBtn.disabled = false;
+      }
+    });
+
+    // Slider inputs
+    const sliders = ['scale', 'posX', 'posY', 'posZ', 'rotX', 'rotY', 'rotZ'];
+    const updateTransform = () => {
+      const config = {
+        scale: parseFloat(this.hudElement.querySelector('#hud-slide-scale').value),
+        posX: parseFloat(this.hudElement.querySelector('#hud-slide-posX').value),
+        posY: parseFloat(this.hudElement.querySelector('#hud-slide-posY').value),
+        posZ: parseFloat(this.hudElement.querySelector('#hud-slide-posZ').value),
+        rotX: parseFloat(this.hudElement.querySelector('#hud-slide-rotX').value),
+        rotY: parseFloat(this.hudElement.querySelector('#hud-slide-rotY').value),
+        rotZ: parseFloat(this.hudElement.querySelector('#hud-slide-rotZ').value)
+      };
+
+      // Update text indicators
+      this.hudElement.querySelector('#hud-val-scale').textContent = config.scale.toFixed(2) + 'x';
+      this.hudElement.querySelector('#hud-val-posX').textContent = config.posX.toFixed(1) + 'm';
+      this.hudElement.querySelector('#hud-val-posY').textContent = config.posY.toFixed(1) + 'm';
+      this.hudElement.querySelector('#hud-val-posZ').textContent = config.posZ.toFixed(1) + 'm';
+      this.hudElement.querySelector('#hud-val-rotX').textContent = config.rotX + '°';
+      this.hudElement.querySelector('#hud-val-rotY').textContent = config.rotY + '°';
+      this.hudElement.querySelector('#hud-val-rotZ').textContent = config.rotZ + '°';
+
+      if (this.onTransformChange) {
+        this.onTransformChange(config);
+      }
+    };
+
+    sliders.forEach(id => {
+      this.hudElement.querySelector(`#hud-slide-${id}`).addEventListener('input', updateTransform);
+    });
+
+    // Reset alignment
+    resetBtn.addEventListener('click', () => {
+      const defaults = { scale: 1.0, posX: 0.0, posY: 0.0, posZ: 0.0, rotX: 0.0, rotY: 0.0, rotZ: 0.0 };
+      this.setSliders(defaults);
+      if (this.onTransformChange) {
+        this.onTransformChange(defaults);
+      }
+    });
+
+    // Clear custom model
+    clearBtn.addEventListener('click', () => {
+      if (this.onClearModel) {
+        this.onClearModel();
+      }
+      statusText.textContent = 'No custom model loaded';
+      statusText.style.color = '#445566';
+      fileInput.value = '';
+    });
+  }
+
+  setSliders(config) {
+    this.hudElement.querySelector('#hud-slide-scale').value = config.scale;
+    this.hudElement.querySelector('#hud-slide-posX').value = config.posX;
+    this.hudElement.querySelector('#hud-slide-posY').value = config.posY;
+    this.hudElement.querySelector('#hud-slide-posZ').value = config.posZ;
+    this.hudElement.querySelector('#hud-slide-rotX').value = config.rotX || 0;
+    this.hudElement.querySelector('#hud-slide-rotY').value = config.rotY || 0;
+    this.hudElement.querySelector('#hud-slide-rotZ').value = config.rotZ || 0;
+
+    this.hudElement.querySelector('#hud-val-scale').textContent = config.scale.toFixed(2) + 'x';
+    this.hudElement.querySelector('#hud-val-posX').textContent = config.posX.toFixed(1) + 'm';
+    this.hudElement.querySelector('#hud-val-posY').textContent = config.posY.toFixed(1) + 'm';
+    this.hudElement.querySelector('#hud-val-posZ').textContent = config.posZ.toFixed(1) + 'm';
+    this.hudElement.querySelector('#hud-val-rotX').textContent = (config.rotX || 0) + '°';
+    this.hudElement.querySelector('#hud-val-rotY').textContent = (config.rotY || 0) + '°';
+    this.hudElement.querySelector('#hud-val-rotZ').textContent = (config.rotZ || 0) + '°';
+  }
+
+  setStatus(text, color) {
+    const statusText = this.hudElement.querySelector('#hud-model-status');
+    statusText.textContent = text;
+    if (color) statusText.style.color = color;
   }
 
   dispose() {
