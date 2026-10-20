@@ -62,3 +62,7 @@ python scripts/sensing_bridge.py --port COM3
 
 ## 📖 System Guides
 For a deep dive into the WebSocket JSON schemas, signal smoothing math, and the theoretical layout for 2D trilateration, read the [System Guide](docs/tracker-app-guide.md).
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
